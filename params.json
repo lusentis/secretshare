@@ -1,0 +1,26 @@
+[
+  {
+    "Name": "/secretshare/hosting-bucket-name",
+    "Value": "secretshareinfrastructuresta-hostingbucket5dac2127-wimdmonvz1sq"
+  },
+  {
+    "Name": "/secretshare/identity-pool-id",
+    "Value": "eu-west-1:777ba34a-6e62-4875-a984-20e748410b52"
+  },
+  {
+    "Name": "/secretshare/keys-table-name",
+    "Value": "SecretshareInfrastructureStack-KeysTableDD857A22-1GSIUA9CF0AJ6"
+  },
+  {
+    "Name": "/secretshare/url",
+    "Value": "https://d2aa2g3psv9yd9.cloudfront.net"
+  },
+  {
+    "Name": "/secretshare/user-pool-client-id",
+    "Value": "48mgmf74rbi3ijahicti0u9om4"
+  },
+  {
+    "Name": "/secretshare/user-pool-id",
+    "Value": "eu-west-1_8yXnrrRXr"
+  }
+]
