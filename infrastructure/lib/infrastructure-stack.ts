@@ -5,9 +5,11 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3_deployment from 'aws-cdk-lib/aws-s3-deployment';
 import * as cf from 'aws-cdk-lib/aws-cloudfront';
 import * as cf_origin from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import path from 'path';
 
 export class InfrastructureStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -25,32 +27,32 @@ export class InfrastructureStack extends cdk.Stack {
     // create cognito clients for anoynmous access to the keys table (
     // using row-level security for sub)
 
-    const userPool = new cognito.UserPool(this, 'UserPool', {
-      selfSignUpEnabled: false,
-      signInAliases: { email: true },
-      accountRecovery: cognito.AccountRecovery.NONE,
-      deletionProtection: false,
-      mfa: cognito.Mfa.REQUIRED,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    // const userPool = new cognito.UserPool(this, 'UserPool', {
+    //   selfSignUpEnabled: false,
+    //   signInAliases: { email: true },
+    //   accountRecovery: cognito.AccountRecovery.NONE,
+    //   deletionProtection: false,
+    //   mfa: cognito.Mfa.REQUIRED,
+    //   removalPolicy: cdk.RemovalPolicy.DESTROY,
+    // });
 
-    const userPoolClient = new cognito.UserPoolClient(this, 'UserPoolClient', {
-      userPool,
-      generateSecret: false,
-      authFlows: {
-        userPassword: true,
-        userSrp: true,
-        adminUserPassword: true,
-        custom: true,
-      },
-    });
+    // const userPoolClient = new cognito.UserPoolClient(this, 'UserPoolClient', {
+    //   userPool,
+    //   generateSecret: false,
+    //   authFlows: {
+    //     userPassword: true,
+    //     userSrp: true,
+    //     adminUserPassword: true,
+    //     custom: true,
+    //   },
+    // });
 
     const identityPool = new cognito.CfnIdentityPool(this, 'IdentityPool', {
       allowUnauthenticatedIdentities: true,
-      cognitoIdentityProviders: [{
-        clientId: userPoolClient.userPoolClientId,
-        providerName: userPool.userPoolProviderName,
-      }],
+      // cognitoIdentityProviders: [{
+      //   clientId: userPoolClient.userPoolClientId,
+      //   providerName: userPool.userPoolProviderName,
+      // }],
     });
 
     const unauthRole = new iam.Role(this, 'UnauthRole', {
@@ -79,6 +81,13 @@ export class InfrastructureStack extends cdk.Stack {
 
     keysTable.encryptionKey?.grantEncryptDecrypt(unauthRole);
 
+    new cognito.CfnIdentityPoolRoleAttachment(this, 'IdentityPoolRoleAttachment', {
+      identityPoolId: identityPool.ref,
+      roles: {
+        unauthenticated: unauthRole.roleArn,
+      },
+    });
+
     // hosting bucket
     //
 
@@ -88,6 +97,10 @@ export class InfrastructureStack extends cdk.Stack {
       websiteIndexDocument: 'index.html',
       websiteErrorDocument: 'index.html',
     });
+
+    // This is a website bucket, so we need to grant public read access
+    // for the cloudfront distribution to serve the content via the website endpoint
+    bucket.grantPublicAccess('*', 's3:GetObject');
 
     const distribution = new cf.Distribution(this, 'Distribution', {
       defaultBehavior: {
@@ -104,7 +117,7 @@ export class InfrastructureStack extends cdk.Stack {
                   exports.handler = async (event) => {
                     const response = event.Records[0].cf.response;
                     response.headers['strict-transport-security'] = [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }];
-                    response.headers['content-security-policy'] = [{ key: 'Content-Security-Policy', value: "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';" }];
+                    response.headers['content-security-policy-report-only'] = [{ key: 'Content-Security-Policy', value: "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';" }];
                     response.headers['x-content-type-options'] = [{ key: 'X-Content-Type-Options', value: 'nosniff' }];
                     response.headers['x-frame-options'] = [{ key: 'X-Frame-Options', value: 'DENY' }];
                     response.headers['x-xss-protection'] = [{ key: 'X-XSS-Protection', value: '1; mode=block' }];
@@ -117,6 +130,17 @@ export class InfrastructureStack extends cdk.Stack {
       },
     });
 
+    bucket.grantRead(oin);
+
+    // Deployment
+
+    new s3_deployment.BucketDeployment(this, 'DeployWebsite', {
+      sources: [s3_deployment.Source.asset(path.join(__dirname, '../../out'))],
+      destinationBucket: bucket,
+      distribution,
+      distributionPaths: ['/*'],
+    });
+
     // parameters used during the deployment
     //
 
@@ -125,15 +149,15 @@ export class InfrastructureStack extends cdk.Stack {
       stringValue: keysTable.tableName,
     });
 
-    new ssm.StringParameter(this, 'UserPoolId', {
-      parameterName: '/secretshare/user-pool-id',
-      stringValue: userPool.userPoolId,
-    });
+    // new ssm.StringParameter(this, 'UserPoolId', {
+    //   parameterName: '/secretshare/user-pool-id',
+    //   stringValue: userPool.userPoolId,
+    // });
 
-    new ssm.StringParameter(this, 'UserPoolClientId', {
-      parameterName: '/secretshare/user-pool-client-id',
-      stringValue: userPoolClient.userPoolClientId,
-    });
+    // new ssm.StringParameter(this, 'UserPoolClientId', {
+    //   parameterName: '/secretshare/user-pool-client-id',
+    //   stringValue: userPoolClient.userPoolClientId,
+    // });
 
     new ssm.StringParameter(this, 'IdentityPoolId', {
       parameterName: '/secretshare/identity-pool-id',
